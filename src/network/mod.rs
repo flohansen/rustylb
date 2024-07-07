@@ -31,25 +31,32 @@ impl LoadBalancer {
         LoadBalancer { strategy: Arc::new(Mutex::new(strategy)) }
     }
 
-    /// Handles an incoming TCP connection by forwarding it to a backend server selected by the
-    /// load balancing strategy.
-    async fn handle_connection(&self, mut socket: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(target) = self.strategy.lock().await.next() {
-            let addr = SocketAddr::from((target.ip, target.port));
-            let mut conn = TcpStream::connect(addr).await?;
-
-            let timeout_duration = Duration::from_secs(5);
-            tokio::select! {
-                res = copy_bidirectional(&mut socket, &mut conn) => {
-                    if let Err(err) = res {
-                        eprintln!("Proxy error: {}", err);
-                    }
-                }
-
-                _ = tokio::time::sleep(timeout_duration) => {
-                    eprintln!("Connection timed out");
+    /// Copies the content of the TCP stream to the given destination and writes the response to
+    /// the given source.
+    async fn copy_request(&self, timeout_duration: Duration, mut source: TcpStream, mut destination: TcpStream) {
+        tokio::select! {
+            res = copy_bidirectional(&mut source, &mut destination) => {
+                if let Err(err) = res {
+                    eprintln!("Proxy error: {}", err);
                 }
             }
+
+            _ = tokio::time::sleep(timeout_duration) => {
+                eprintln!("Connection timed out");
+            }
+        }
+    }
+
+    /// Handles an incoming TCP connection by forwarding it to a backend server selected by the
+    /// load balancing strategy.
+    async fn handle_connection(&self, stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(target) = self.strategy.lock().await.next() {
+            let addr = SocketAddr::from((target.ip, target.port));
+            let target_stream = TcpStream::connect(addr).await?;
+
+            // TODO: Don't hard code timeout.
+            let timeout = Duration::from_secs(5);
+            self.copy_request(timeout, stream, target_stream).await;
 
             Ok(())
         } else {
@@ -67,7 +74,6 @@ impl LoadBalancer {
 
         loop {
             let (socket, addr) = listener.accept().await?;
-
             println!("Received request from {}", addr);
 
             let lb = arc.clone();
