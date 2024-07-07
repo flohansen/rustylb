@@ -1,5 +1,5 @@
 use std::{net::{IpAddr, SocketAddr}, sync::Arc, time::Duration};
-use tokio::{io::copy_bidirectional, net::{TcpListener, TcpStream}, sync::Mutex, time::timeout};
+use tokio::{io::copy_bidirectional, net::{TcpListener, TcpStream}, sync::Mutex};
 
 pub struct Target {
     ip: IpAddr,
@@ -12,33 +12,40 @@ impl Target {
     }
 }
 
-pub trait BalancingStrategy {
+pub trait BalancingStrategy: Send + Sync {
     fn next(&mut self) -> Option<&Target>;
 }
 
 pub struct LoadBalancer {
-    strategy: Box<dyn BalancingStrategy + Send + Sync>,
+    strategy: Arc<Mutex<dyn BalancingStrategy>>,
 }
 
 impl LoadBalancer {
-    pub fn new(strategy: Box<dyn BalancingStrategy + Send + Sync>) -> Self {
-        LoadBalancer { strategy }
+    pub fn new(strategy: impl BalancingStrategy + 'static) -> Self {
+        LoadBalancer { strategy: Arc::new(Mutex::new(strategy)) }
     }
 
-    async fn handle_connection(&mut self, mut socket: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-        match self.strategy.next() {
-            Some(target) => {
-                let addr = SocketAddr::from((target.ip, target.port));
-                let mut conn = TcpStream::connect(addr).await?;
+    async fn handle_connection(&self, mut socket: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(target) = self.strategy.lock().await.next() {
+            let addr = SocketAddr::from((target.ip, target.port));
+            let mut conn = TcpStream::connect(addr).await?;
 
-                let timeout_duration = Duration::from_secs(5);
-                if let Err(err) = timeout(timeout_duration, copy_bidirectional(&mut socket, &mut conn)).await {
-                    eprintln!("Error proxying request: {}", err);
+            let timeout_duration = Duration::from_secs(5);
+            tokio::select! {
+                res = copy_bidirectional(&mut socket, &mut conn) => {
+                    if let Err(err) = res {
+                        eprintln!("Proxy error: {}", err);
+                    }
                 }
 
-                Ok(())
+                _ = tokio::time::sleep(timeout_duration) => {
+                    eprintln!("Connection timed out");
+                }
             }
-            None => Ok(())
+
+            Ok(())
+        } else {
+            Err("No targets".into())
         }
     }
 

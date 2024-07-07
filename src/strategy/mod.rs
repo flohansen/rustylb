@@ -14,7 +14,10 @@ impl RoundRobin {
 impl BalancingStrategy for RoundRobin {
     fn next(&mut self) -> Option<&Target> {
         let target = self.targets.get(self.current);
-        self.current = (self.current + 1) % self.targets.len();
+
+        if let Some(_) = target {
+            self.current = (self.current + 1) % self.targets.len();
+        }
 
         target
     }

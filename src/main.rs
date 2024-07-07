@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let strategy = strategy::RoundRobin::new(targets);
 
-    network::LoadBalancer::new(Box::new(strategy))
+    network::LoadBalancer::new(strategy)
         .run()
         .await
 }
