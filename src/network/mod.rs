@@ -6,15 +6,6 @@ pub struct Target {
     port: u16,
 }
 
-impl Clone for Target {
-    fn clone(&self) -> Self {
-        Target {
-            ip: self.ip.clone(),
-            port: self.port,
-        }
-    }
-}
-
 impl Target {
     pub fn new(ip: IpAddr, port: u16) -> Self {
         Target { ip, port }
