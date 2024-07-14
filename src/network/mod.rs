@@ -8,6 +8,16 @@ pub struct Target {
 }
 
 impl Target {
+    pub fn ip(&self) -> IpAddr {
+        self.ip
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+impl Target {
     pub fn new(ip: IpAddr, port: u16) -> Self {
         Target { ip, port }
     }
