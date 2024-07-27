@@ -24,7 +24,7 @@ impl Target {
 }
 
 /// Defines the interface for a load balancing strategy.
-pub trait BalancingStrategy: Send + Sync {
+pub trait BalancingStrategy {
     /// Selects the next target server based on the implemented strategy.
     fn next(&mut self) -> Option<&Target>;
 }
@@ -33,12 +33,12 @@ pub trait BalancingStrategy: Send + Sync {
 /// to a chosen balancing strategy.
 pub struct LoadBalancer {
     timeout: Duration,
-    strategy: Arc<Mutex<dyn BalancingStrategy>>,
+    strategy: Arc<Mutex<dyn BalancingStrategy + Send + Sync>>,
 }
 
 impl LoadBalancer {
     /// Creates a new `LoadBalancer` instance with the specified balancing strategy.
-    pub fn new(strategy: impl BalancingStrategy + 'static) -> Self {
+    pub fn new(strategy: impl BalancingStrategy + Send + Sync + 'static) -> Self {
         let timeout = Duration::from_millis(6000);
         Self { timeout, strategy: Arc::new(Mutex::new(strategy)) }
     }
@@ -98,7 +98,7 @@ impl LoadBalancer {
 
 pub struct LoadBalancerBuilder {
     timeout: Duration,
-    strategy: Option<Arc<Mutex<dyn BalancingStrategy>>>,
+    strategy: Option<Arc<Mutex<dyn BalancingStrategy + Send + Sync>>>,
 }
 
 impl LoadBalancerBuilder {
@@ -109,8 +109,8 @@ impl LoadBalancerBuilder {
         }
     }
 
-    pub fn strategy(mut self, strategy: Arc<Mutex<dyn BalancingStrategy>>) -> Self {
-        self.strategy = Some(strategy);
+    pub fn strategy(mut self, strategy: impl BalancingStrategy + Send + Sync + 'static) -> Self {
+        self.strategy = Some(Arc::new(Mutex::new(strategy)));
         self
     }
 

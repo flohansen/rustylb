@@ -1,6 +1,4 @@
-use std::{net::IpAddr, sync::Arc, time::Duration};
-
-use tokio::sync::Mutex;
+use std::{net::IpAddr, time::Duration};
 
 pub mod application;
 pub mod network;
@@ -17,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     // The strategy used for distributing incoming TCP packets to the targets.
-    let round_robin = Arc::new(Mutex::new(strategy::RoundRobin::new(targets)));
+    let round_robin = strategy::RoundRobin::new(targets);
 
     // Create and run the load balancer.
     let load_balancer = network::LoadBalancerBuilder::new()
